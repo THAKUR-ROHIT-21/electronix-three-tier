@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Environment variables — NEVER commit real secrets
+.env
+.env.dev
+.env.prod
+.env.local
+.env.test
+
+# Build output
+.dist/
+dist/
+build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# Uploaded files (if you ever save locally before Cloudinary upload)
+uploads/
+tmp/
