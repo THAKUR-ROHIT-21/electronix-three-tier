@@ -1,23 +1,60 @@
 pipeline {
     agent { label 'electronic' }
-
-   stages{
-    stage("Provision Node.js Runtime"){
-        steps{
-            sh'''
-            if ! command -v node &> /dev/null;then
-            sudo apt-get update
-            sudo apt-get install -y curl
-            curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
-            sudo bash nodesource_setup.sh
-            sudo apt-get install -y nodejs
-            rm -rf nodesource_setup.sh
-            fi
-            node -v
-            echo "Node JS Runtime Successfully Installed ✅"
-            '''
+   
+    stages{
+        stage("Provision Node.js Runtime"){
+            steps{
+                sh '''
+                if ! command -v node &> /dev/null;then
+                sudo apt-get update -y
+                sudo apt-get install -y curl
+                curl -fsSL https://deb.nodesource.com/setup_20.x -o nodesource_setup.sh
+                sudo bash nodesource_setup.sh
+                sudo apt-get install -y nodejs
+                rm -f nodesource_setup.sh
+                fi
+                node -v
+                echo "Node JS Runtime Successfully Installed ✅"
+                '''
+            }
         }
-    }
-   }
+
+        stage("Provision Docker Engine"){
+            steps{
+                sh '''
+                if ! command -v docker &> /dev/null;then
+                sudo apt-get install -y ca-certificates curl gnupg
+                sudo install -m 0755 -d /etc/apt/keyrings
+                sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+                sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+                echo \
+                "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
+                $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+                sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+                sudo apt-get update -y
+                sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+                fi 
+                docker --version
+                echo "Docker Installed Done ✅"
+                '''
+            }
+        }
+
+        stage("Provision Mysql client"){
+            steps{
+                sh ''' 
+                if ! command -v mysql &> /dev/null;then
+                sudo apt-get install -y mysql-client
+                fi
+                mysql --version
+                echo "Mysql Done ✅"
+                '''
+            }
+        }
+
+    } 
+
 }
 
