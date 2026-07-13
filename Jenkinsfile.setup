@@ -1,0 +1,13 @@
+pipeline {
+    agent {
+        label 'electronic'
+    }
+
+    stages {
+        stage('Tools Configure') {
+            steps {
+                echo "Tools installation pipeline"
+            }
+        }
+    }
+}
