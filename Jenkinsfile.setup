@@ -1,45 +1,24 @@
-// pipeline {
-//     agent {
-//         label 'electronic'
-//     }
+pipeline {
+    agent {
+        label 'electronic'
+    }
 
-//     stages {
+    stages {
 
-//         stage('Tools Configure') {
-//             steps {
-//                 echo "Tools installation pipeline"
-//             }
-//         }
+        stage('Tools Configure') {
+            steps {
+                echo "Tools installation pipeline"
+            }
+        }
 
-//         stage('List Update') {
-//             steps {
-//                 sh '''
-//                     sudo apt-get update -y
-//                 '''
-//             }
-//         }
-//     }
-// }
-
-
-pipeline{
-    agent{label 'electronic'}
-
-    stages{
-        stage('Code'){
-            echo "This is for code"
+        stage('List Update') {
+            steps {
+                sh '''
+                    sudo apt-get update -y
+                '''
+            }
         }
     }
-
-    stage('Build'){
-        echo "This is for build"
-    }
-
-    stage('Test'){
-        echo "This is for Test"
-    }
-    
-    stage('Deploy'){
-        echo "This is for Deploy"
-    }
 }
+
+
