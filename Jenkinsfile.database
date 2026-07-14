@@ -15,20 +15,11 @@ pipeline{
     }
     post{
         success{
-            echo 'Database Creation Successufull ✅'
+            echo 'Database Creation and Smoke Test Successfull ✅'
         }
 
         failure{
-            echo 'Datebase creation failed ❌'
-        }
-    }
-    post{
-        success{
-            echo 'Smoke Test Pass ✅'
-        }
-
-        failure{
-            echo 'Smoke Test Failed ❌'
+            echo 'Database and Smoke Test Failed ❌'
         }
     }
 }
