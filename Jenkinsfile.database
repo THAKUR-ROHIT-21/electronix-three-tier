@@ -1,0 +1,20 @@
+pipeline{
+    agent { label 'electronic' }
+
+    stages{
+        stage('Creating Database'){
+            steps{
+                sh 'python3 scripts/create_db.py'
+            }
+        }
+    }
+    post{
+        success{
+            echo 'Database Creation Successufull ✅'
+        }
+
+        failure{
+            echo 'Datebase creation failed ❌'
+        }
+    }
+}
