@@ -7,6 +7,11 @@ pipeline{
                 sh 'python3 scripts/create_db.py'
             }
         }
+        stage('Smoke test'){
+            steps{
+                sh 'python3 scripts/smoke_test.py'
+            }
+        }
     }
     post{
         success{
@@ -15,6 +20,15 @@ pipeline{
 
         failure{
             echo 'Datebase creation failed ❌'
+        }
+    }
+    post{
+        success{
+            echo 'Smoke Test Pass ✅'
+        }
+
+        failure{
+            echo 'Smoke Test Failed ❌'
         }
     }
 }
