@@ -1,68 +1,72 @@
 pipeline {
-    agent {
-        label 'electronic'
+    agent { label 'electronic' }
+
+    environment{
+        S3_BUCKET='electronix-production-666'
+        CLOUDFRONT_ID='E3B9NCR47NLAIX'
+        AWS_REGION='ap-south-1'
     }
 
     stages {
-
-        stage("I am from Electronic") {
-            steps {
-                echo "Hello From Electronic"
+        stage('Frontend Deployment') {
+            when {
+                changeset "frontend/**"
             }
-        }
 
-        stage("Electronic setup") {
-            steps {
-                echo "Electronic setup is working"
+            stages {
+                stage('Install Dependencies') {
+                    steps {
+                        dir('frontend') {
+                            sh '''
+                            npm install
+                            '''
+                        }
+                    }
+                }
+
+                stage("Run Tests") {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm test -- --watchAll=false || echo "No Test Configured.."'
+                        }
+                    }
+                }
+
+                stage("Build") {
+                    steps {
+                        dir('frontend') {
+                            sh 'npm run build'
+                        }
+                    }
+                }
+
+                stage('Deploy S3') {
+                    steps {
+                        dir('frontend') {
+                            sh '''
+                            aws s3 sync dist/ s3://${S3_BUCKET} --delete --region ${AWS_REGION}
+                            '''
+                        }
+                    }
+                }
+                stage('Invalidation Cloudfront Cache'){
+                    steps{
+                        sh'''
+                        aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_ID} --paths "/*"
+                        '''
+                    }
+                }
             }
         }
     }
 
-    post {
-
-        success {
-            echo "Pipeline passed successfully ✅"
-
-            mail(
-                to: "thakurrohitkr591@gmail.com",
-                subject: "Success : Job '${env.JOB_NAME} #${env.BUILD_NUMBER}'",
-                body: """
-'${env.JOB_NAME}' Build Succeeded ✅
-
-Build Number : ${env.BUILD_NUMBER}
-
-Check Build URL:
-${env.BUILD_URL}
-"""
-            )
+    post{
+        success{
+            echo 'Frontend Deployment Successfull ✅'
         }
 
-        failure {
-            echo "Pipeline failed ❌"
-
-            mail(
-                to: "thakurrohitkr591@gmail.com",
-                subject: "Failed : Job '${env.JOB_NAME} #${env.BUILD_NUMBER}'",
-                body: """
-'${env.JOB_NAME}' Build Failed ❌
-
-Build Number : ${env.BUILD_NUMBER}
-
-Check Build URL:
-${env.BUILD_URL}
-"""
-            )
-        }
-
-        always {
-            echo "Pipeline execution completed 🔔"
+        failure{
+            echo 'Frontend Deployment Failed ❌'
         }
     }
 }
-
-
-
-
-
-
-
