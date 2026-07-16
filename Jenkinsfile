@@ -2,12 +2,22 @@ pipeline {
     agent { label 'electronic' }
 
     environment {
-        // Frontend Configuration
+        /*
+        =====================================================
+                    FRONTEND CONFIGURATION
+        =====================================================
+        */
+
         S3_BUCKET       = 'electronix-production-666'
         CLOUDFRONT_ID   = 'E3B9NCR47NLAIX'
         AWS_REGION      = 'ap-south-1'
 
-        // Backend Configuration
+        /*
+        =====================================================
+                     BACKEND CONFIGURATION
+        =====================================================
+        */
+
         BACKEND_HOST    = '3.111.179.103'
         BACKEND_USER    = 'ubuntu'
         BACKEND_PATH    = '/var/www/electronix-backend'
@@ -54,7 +64,10 @@ pipeline {
 
         stage('Frontend Deployment') {
             when {
-                changeset "frontend/**"
+                anyOf {
+                    changeset pattern: 'frontend/**', comparator: 'GLOB'
+                    changeset pattern: 'Jenkinsfile', comparator: 'GLOB'
+                }
             }
 
             stages {
@@ -64,7 +77,14 @@ pipeline {
                         dir('frontend') {
                             sh '''
                                 set -e
-                                npm install
+
+                                echo "Installing frontend dependencies..."
+
+                                if [ -f "package-lock.json" ]; then
+                                    npm ci
+                                else
+                                    npm install
+                                fi
                             '''
                         }
                     }
@@ -86,6 +106,8 @@ pipeline {
                         dir('frontend') {
                             sh '''
                                 set -e
+
+                                echo "Building frontend..."
                                 npm run build
                             '''
                         }
@@ -103,6 +125,11 @@ pipeline {
                                     exit 1
                                 fi
 
+                                if [ ! -f "dist/index.html" ]; then
+                                    echo "dist/index.html not found ❌"
+                                    exit 1
+                                fi
+
                                 echo "Frontend build verified ✅"
                             '''
                         }
@@ -115,11 +142,13 @@ pipeline {
                             sh '''
                                 set -e
 
+                                echo "Uploading frontend files to S3..."
+
                                 aws s3 sync dist/ s3://${S3_BUCKET} \
                                     --delete \
                                     --region ${AWS_REGION}
 
-                                echo "Frontend uploaded to S3 ✅"
+                                echo "Frontend deployed to S3 ✅"
                             '''
                         }
                     }
@@ -129,6 +158,8 @@ pipeline {
                     steps {
                         sh '''
                             set -e
+
+                            echo "Invalidating CloudFront cache..."
 
                             aws cloudfront create-invalidation \
                                 --distribution-id ${CLOUDFRONT_ID} \
@@ -149,7 +180,10 @@ pipeline {
 
         stage('Backend Deployment') {
             when {
-                changeset "backend/**"
+                anyOf {
+                    changeset pattern: 'backend/**', comparator: 'GLOB'
+                    changeset pattern: 'Jenkinsfile', comparator: 'GLOB'
+                }
             }
 
             stages {
@@ -159,7 +193,14 @@ pipeline {
                         dir('backend') {
                             sh '''
                                 set -e
-                                npm install
+
+                                echo "Installing backend dependencies..."
+
+                                if [ -f "package-lock.json" ]; then
+                                    npm ci
+                                else
+                                    npm install
+                                fi
                             '''
                         }
                     }
@@ -204,8 +245,11 @@ pipeline {
                             sh '''
                                 set -e
 
+                                echo "Testing SSH connection with backend EC2..."
+
                                 ssh \
                                     -o StrictHostKeyChecking=no \
+                                    -o UserKnownHostsFile=/dev/null \
                                     -o ConnectTimeout=15 \
                                     ${BACKEND_USER}@${BACKEND_HOST} \
                                     "echo 'Backend EC2 SSH connection successful ✅'"
@@ -222,10 +266,13 @@ pipeline {
 
                                 ssh \
                                     -o StrictHostKeyChecking=no \
+                                    -o UserKnownHostsFile=/dev/null \
                                     ${BACKEND_USER}@${BACKEND_HOST} "
                                         sudo mkdir -p ${BACKEND_PATH} &&
                                         sudo chown -R ${BACKEND_USER}:${BACKEND_USER} ${BACKEND_PATH}
                                     "
+
+                                echo "Backend directory prepared ✅"
                             '''
                         }
                     }
@@ -237,6 +284,8 @@ pipeline {
                             sh '''
                                 set -e
 
+                                echo "Deploying backend files to EC2..."
+
                                 rsync -avz \
                                     --delete \
                                     --exclude="node_modules" \
@@ -245,7 +294,7 @@ pipeline {
                                     --exclude=".env" \
                                     --exclude=".env.*" \
                                     --exclude="*.log" \
-                                    -e "ssh -o StrictHostKeyChecking=no" \
+                                    -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
                                     backend/ \
                                     ${BACKEND_USER}@${BACKEND_HOST}:${BACKEND_PATH}/
 
@@ -263,6 +312,7 @@ pipeline {
 
                                 ssh \
                                     -o StrictHostKeyChecking=no \
+                                    -o UserKnownHostsFile=/dev/null \
                                     ${BACKEND_USER}@${BACKEND_HOST} "
                                         set -e
 
@@ -278,8 +328,16 @@ pipeline {
                                             exit 1
                                         fi
 
-                                        npm install --omit=dev
+                                        echo 'Installing production dependencies...'
+
+                                        if [ -f 'package-lock.json' ]; then
+                                            npm ci --omit=dev
+                                        else
+                                            npm install --omit=dev
+                                        fi
                                     "
+
+                                echo "Production dependencies installed ✅"
                             '''
                         }
                     }
@@ -293,22 +351,25 @@ pipeline {
 
                                 ssh \
                                     -o StrictHostKeyChecking=no \
+                                    -o UserKnownHostsFile=/dev/null \
                                     ${BACKEND_USER}@${BACKEND_HOST} "
                                         set -e
 
                                         cd ${BACKEND_PATH}
 
                                         if [ ! -f '.env.prod' ]; then
-                                            echo '.env.prod file not found on backend EC2 ❌'
-                                            echo 'Create: ${BACKEND_PATH}/.env.prod'
+                                            echo '.env.prod file not found ❌'
+                                            echo 'Create file: ${BACKEND_PATH}/.env.prod'
                                             exit 1
                                         fi
 
                                         if ! command -v pm2 >/dev/null 2>&1; then
-                                            echo 'PM2 is not installed on backend EC2 ❌'
+                                            echo 'PM2 is not installed ❌'
                                             echo 'Run: sudo npm install -g pm2'
                                             exit 1
                                         fi
+
+                                        echo 'Restarting backend application...'
 
                                         if pm2 describe ${BACKEND_APP} >/dev/null 2>&1; then
                                             pm2 restart ${BACKEND_APP} --update-env
@@ -321,6 +382,8 @@ pipeline {
                                         pm2 save
                                         pm2 status
                                     "
+
+                                echo "Backend application restarted ✅"
                             '''
                         }
                     }
@@ -328,22 +391,31 @@ pipeline {
 
                 stage('Backend Health Check') {
                     steps {
-                        sh '''
-                            echo "Waiting for backend application..."
-                            sleep 10
+                        sshagent(credentials: ['backend-ec2-ssh-key']) {
+                            sh '''
+                                set -e
 
-                            curl \
-                                --fail \
-                                --silent \
-                                --show-error \
-                                --retry 5 \
-                                --retry-delay 5 \
-                                --connect-timeout 10 \
-                                http://${BACKEND_HOST}:${BACKEND_PORT}/health
+                                echo "Waiting for backend application..."
+                                sleep 10
 
-                            echo ""
-                            echo "Backend health check successful ✅"
-                        '''
+                                ssh \
+                                    -o StrictHostKeyChecking=no \
+                                    -o UserKnownHostsFile=/dev/null \
+                                    ${BACKEND_USER}@${BACKEND_HOST} "
+                                        curl \
+                                            --fail \
+                                            --silent \
+                                            --show-error \
+                                            --retry 5 \
+                                            --retry-delay 5 \
+                                            --connect-timeout 10 \
+                                            http://localhost:${BACKEND_PORT}/health
+                                    "
+
+                                echo ""
+                                echo "Backend health check successful ✅"
+                            '''
+                        }
                     }
                 }
             }
@@ -361,6 +433,10 @@ pipeline {
 
         unstable {
             echo 'Application Deployment Unstable ⚠️'
+        }
+
+        aborted {
+            echo 'Application Deployment Aborted ⚠️'
         }
 
         always {
