@@ -1,446 +1,80 @@
 pipeline {
     agent { label 'electronic' }
 
-    environment {
-        /*
-        =====================================================
-                    FRONTEND CONFIGURATION
-        =====================================================
-        */
-
-        S3_BUCKET       = 'electronix-production-666'
-        CLOUDFRONT_ID   = 'E3B9NCR47NLAIX'
-        AWS_REGION      = 'ap-south-1'
-
-        /*
-        =====================================================
-                     BACKEND CONFIGURATION
-        =====================================================
-        */
-
-        BACKEND_HOST    = '3.111.179.103'
-        BACKEND_USER    = 'ubuntu'
-        BACKEND_PATH    = '/var/www/electronix-backend'
-        BACKEND_PORT    = '5000'
-        BACKEND_APP     = 'electronix-backend'
-    }
-
-    options {
-        timestamps()
-        disableConcurrentBuilds()
+    environment{
+        S3_BUCKET='electronix-production-666'
+        CLOUDFRONT_ID='E3B9NCR47NLAIX'
+        AWS_REGION='ap-south-1'
     }
 
     stages {
-
-        /*
-        =====================================================
-                     VERIFY REQUIRED TOOLS
-        =====================================================
-        */
-
-        stage('Verify Required Tools') {
-            steps {
-                sh '''
-                    set -e
-
-                    echo "Checking required tools..."
-
-                    node --version
-                    npm --version
-                    aws --version
-                    ssh -V
-                    rsync --version
-
-                    echo "Required tools are available ✅"
-                '''
-            }
-        }
-
-        /*
-        =====================================================
-                      FRONTEND DEPLOYMENT
-        =====================================================
-        */
-
         stage('Frontend Deployment') {
             when {
-                anyOf {
-                    changeset pattern: 'frontend/**', comparator: 'GLOB'
-                    changeset pattern: 'Jenkinsfile', comparator: 'GLOB'
-                }
+                changeset "frontend/**"
             }
 
             stages {
-
-                stage('Install Frontend Dependencies') {
+                stage('Install Dependencies') {
                     steps {
                         dir('frontend') {
                             sh '''
-                                set -e
-
-                                echo "Installing frontend dependencies..."
-
-                                if [ -f "package-lock.json" ]; then
-                                    npm ci
-                                else
-                                    npm install
-                                fi
+                            npm install
                             '''
                         }
                     }
                 }
 
-                stage('Run Frontend Tests') {
+                stage("Run Tests") {
                     steps {
                         dir('frontend') {
-                            sh '''
-                                npm test -- --watchAll=false \
-                                || echo "No frontend tests configured."
-                            '''
+                            sh 'npm test -- --watchAll=false || echo "No Test Configured.."'
                         }
                     }
                 }
 
-                stage('Build Frontend') {
+                stage("Build") {
                     steps {
                         dir('frontend') {
-                            sh '''
-                                set -e
-
-                                echo "Building frontend..."
-                                npm run build
-                            '''
+                            sh 'npm run build'
                         }
                     }
                 }
 
-                stage('Verify Frontend Build') {
+                stage('Deploy S3') {
                     steps {
                         dir('frontend') {
                             sh '''
-                                set -e
-
-                                if [ ! -d "dist" ]; then
-                                    echo "Frontend dist directory not found ❌"
-                                    exit 1
-                                fi
-
-                                if [ ! -f "dist/index.html" ]; then
-                                    echo "dist/index.html not found ❌"
-                                    exit 1
-                                fi
-
-                                echo "Frontend build verified ✅"
+                            aws s3 sync dist/ s3://${S3_BUCKET} --delete --region ${AWS_REGION}
                             '''
                         }
                     }
                 }
-
-                stage('Deploy Frontend to S3') {
-                    steps {
-                        dir('frontend') {
-                            sh '''
-                                set -e
-
-                                echo "Uploading frontend files to S3..."
-
-                                aws s3 sync dist/ s3://${S3_BUCKET} \
-                                    --delete \
-                                    --region ${AWS_REGION}
-
-                                echo "Frontend deployed to S3 ✅"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Invalidate CloudFront Cache') {
-                    steps {
-                        sh '''
-                            set -e
-
-                            echo "Invalidating CloudFront cache..."
-
-                            aws cloudfront create-invalidation \
-                                --distribution-id ${CLOUDFRONT_ID} \
-                                --paths "/*"
-
-                            echo "CloudFront cache invalidated ✅"
+                stage('Invalidation Cloudfront Cache'){
+                    steps{
+                        sh'''
+                        aws cloudfront create-invalidation --distribution-id ${CLOUDFRONT_ID} --paths "/*"
                         '''
                     }
                 }
             }
         }
-
-        /*
-        =====================================================
-                       BACKEND DEPLOYMENT
-        =====================================================
-        */
-
-        stage('Backend Deployment') {
-            when {
-                anyOf {
-                    changeset pattern: 'backend/**', comparator: 'GLOB'
-                    changeset pattern: 'Jenkinsfile', comparator: 'GLOB'
-                }
-            }
-
-            stages {
-
-                stage('Install Backend Dependencies') {
-                    steps {
-                        dir('backend') {
-                            sh '''
-                                set -e
-
-                                echo "Installing backend dependencies..."
-
-                                if [ -f "package-lock.json" ]; then
-                                    npm ci
-                                else
-                                    npm install
-                                fi
-                            '''
-                        }
-                    }
-                }
-
-                stage('Run Backend Tests') {
-                    steps {
-                        dir('backend') {
-                            sh '''
-                                npm test \
-                                || echo "No backend tests configured."
-                            '''
-                        }
-                    }
-                }
-
-                stage('Verify Backend Files') {
-                    steps {
-                        dir('backend') {
-                            sh '''
-                                set -e
-
-                                if [ ! -f "package.json" ]; then
-                                    echo "backend/package.json not found ❌"
-                                    exit 1
-                                fi
-
-                                if [ ! -f "server.js" ]; then
-                                    echo "backend/server.js not found ❌"
-                                    exit 1
-                                fi
-
-                                echo "Backend files verified ✅"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Test Backend EC2 Connection') {
-                    steps {
-                        sshagent(credentials: ['backend-ec2-ssh-key']) {
-                            sh '''
-                                set -e
-
-                                echo "Testing SSH connection with backend EC2..."
-
-                                ssh \
-                                    -o StrictHostKeyChecking=no \
-                                    -o UserKnownHostsFile=/dev/null \
-                                    -o ConnectTimeout=15 \
-                                    ${BACKEND_USER}@${BACKEND_HOST} \
-                                    "echo 'Backend EC2 SSH connection successful ✅'"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Prepare Backend Directory') {
-                    steps {
-                        sshagent(credentials: ['backend-ec2-ssh-key']) {
-                            sh '''
-                                set -e
-
-                                ssh \
-                                    -o StrictHostKeyChecking=no \
-                                    -o UserKnownHostsFile=/dev/null \
-                                    ${BACKEND_USER}@${BACKEND_HOST} "
-                                        sudo mkdir -p ${BACKEND_PATH} &&
-                                        sudo chown -R ${BACKEND_USER}:${BACKEND_USER} ${BACKEND_PATH}
-                                    "
-
-                                echo "Backend directory prepared ✅"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Deploy Backend to EC2') {
-                    steps {
-                        sshagent(credentials: ['backend-ec2-ssh-key']) {
-                            sh '''
-                                set -e
-
-                                echo "Deploying backend files to EC2..."
-
-                                rsync -avz \
-                                    --delete \
-                                    --exclude="node_modules" \
-                                    --exclude=".git" \
-                                    --exclude=".gitignore" \
-                                    --exclude=".env" \
-                                    --exclude=".env.*" \
-                                    --exclude="*.log" \
-                                    -e "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-                                    backend/ \
-                                    ${BACKEND_USER}@${BACKEND_HOST}:${BACKEND_PATH}/
-
-                                echo "Backend files deployed to EC2 ✅"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Install Production Dependencies') {
-                    steps {
-                        sshagent(credentials: ['backend-ec2-ssh-key']) {
-                            sh '''
-                                set -e
-
-                                ssh \
-                                    -o StrictHostKeyChecking=no \
-                                    -o UserKnownHostsFile=/dev/null \
-                                    ${BACKEND_USER}@${BACKEND_HOST} "
-                                        set -e
-
-                                        cd ${BACKEND_PATH}
-
-                                        if ! command -v node >/dev/null 2>&1; then
-                                            echo 'Node.js is not installed on backend EC2 ❌'
-                                            exit 1
-                                        fi
-
-                                        if ! command -v npm >/dev/null 2>&1; then
-                                            echo 'npm is not installed on backend EC2 ❌'
-                                            exit 1
-                                        fi
-
-                                        echo 'Installing production dependencies...'
-
-                                        if [ -f 'package-lock.json' ]; then
-                                            npm ci --omit=dev
-                                        else
-                                            npm install --omit=dev
-                                        fi
-                                    "
-
-                                echo "Production dependencies installed ✅"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Restart Backend Application') {
-                    steps {
-                        sshagent(credentials: ['backend-ec2-ssh-key']) {
-                            sh '''
-                                set -e
-
-                                ssh \
-                                    -o StrictHostKeyChecking=no \
-                                    -o UserKnownHostsFile=/dev/null \
-                                    ${BACKEND_USER}@${BACKEND_HOST} "
-                                        set -e
-
-                                        cd ${BACKEND_PATH}
-
-                                        if [ ! -f '.env.prod' ]; then
-                                            echo '.env.prod file not found ❌'
-                                            echo 'Create file: ${BACKEND_PATH}/.env.prod'
-                                            exit 1
-                                        fi
-
-                                        if ! command -v pm2 >/dev/null 2>&1; then
-                                            echo 'PM2 is not installed ❌'
-                                            echo 'Run: sudo npm install -g pm2'
-                                            exit 1
-                                        fi
-
-                                        echo 'Restarting backend application...'
-
-                                        if pm2 describe ${BACKEND_APP} >/dev/null 2>&1; then
-                                            pm2 restart ${BACKEND_APP} --update-env
-                                        else
-                                            pm2 start npm \
-                                                --name ${BACKEND_APP} \
-                                                -- start
-                                        fi
-
-                                        pm2 save
-                                        pm2 status
-                                    "
-
-                                echo "Backend application restarted ✅"
-                            '''
-                        }
-                    }
-                }
-
-                stage('Backend Health Check') {
-                    steps {
-                        sshagent(credentials: ['backend-ec2-ssh-key']) {
-                            sh '''
-                                set -e
-
-                                echo "Waiting for backend application..."
-                                sleep 10
-
-                                ssh \
-                                    -o StrictHostKeyChecking=no \
-                                    -o UserKnownHostsFile=/dev/null \
-                                    ${BACKEND_USER}@${BACKEND_HOST} "
-                                        curl \
-                                            --fail \
-                                            --silent \
-                                            --show-error \
-                                            --retry 5 \
-                                            --retry-delay 5 \
-                                            --connect-timeout 10 \
-                                            http://localhost:${BACKEND_PORT}/health
-                                    "
-
-                                echo ""
-                                echo "Backend health check successful ✅"
-                            '''
-                        }
-                    }
-                }
-            }
-        }
     }
 
-    post {
-        success {
-            echo 'Application Deployment Successful ✅'
+    post{
+        success{
+            echo 'Frontend Deployment Successfull ✅'
         }
 
-        failure {
-            echo 'Application Deployment Failed ❌'
-        }
-
-        unstable {
-            echo 'Application Deployment Unstable ⚠️'
-        }
-
-        aborted {
-            echo 'Application Deployment Aborted ⚠️'
-        }
-
-        always {
-            echo 'Pipeline Execution Completed 🔔'
+        failure{
+            echo 'Frontend Deployment Failed ❌'
         }
     }
 }
+
+
+
+
+
+
+
+
