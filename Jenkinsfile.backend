@@ -42,10 +42,10 @@ pipeline {
                     steps {
                         sh '''
                         sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
-                        sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:latest .
+                        sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:latest
 
                         sudo docker push ${ECR_REPO}:${BUILD_NUMBER}
-                        sudo docker push ${ECR_REPO}:latest .
+                        sudo docker push ${ECR_REPO}:latest
                         '''
                     }
                 }
