@@ -13,9 +13,9 @@ pipeline {
 
         stage('Backend Pipeline') {
 
-            when {
-                changeset "backend/**"
-            }
+            // when {
+            //     changeset "backend/**"
+            // }
 
             stages {
 
