@@ -1,0 +1,8 @@
+services:
+  backend:
+    image: 306158389325.dkr.ecr.ap-south-1.amazonaws.com/electronix-ecr:latest
+    ports:
+      - "5000:5000"
+    env_file:
+      - .env
+    restart: unless-stopped

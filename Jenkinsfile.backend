@@ -1,0 +1,24 @@
+pipeline{
+    agent { label 'electronic' }
+    environment{
+        ECR_REPO='306158389325.dkr.ecr.ap-south-1.amazonaws.com/electronix-ecr'
+        AWS_REGION='ap-south-1'
+    }
+    stages{
+        stage("Test ECR Login"){
+            steps{
+                sh '''
+                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
+                '''
+            }
+        }
+    }
+    post{
+        success{
+            echo "ECR login successfully ✅"
+        }
+        failure{
+            echo "ECR login Failed ❌"
+        }
+    }
+}
