@@ -11,9 +11,9 @@ pipeline {
 
     stages {
         stage('Backend Pipeline') {
-            when {
-                changeset "backend/**"
-            }
+            // when {
+            //     changeset "backend/**"
+            // }
 
             stages {
                 stage('Build Docker Image') {
