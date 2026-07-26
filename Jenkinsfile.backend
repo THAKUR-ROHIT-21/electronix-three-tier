@@ -54,7 +54,7 @@ pipeline {
                     steps {
                         sshagent(['prod-server-ssh-key']){
                         sh '''
-                        ssh -o StrictHostKeyChecking=no ubuntu@${PRODUCTION_IP} "echo 'Connection Sussess ✅'"
+                        ssh -o StrictHostKeyChecking=no ubuntu@${PRODUCTION_IP} "echo 'Connection Sussess'"
                         '''  
                         }
                     }
