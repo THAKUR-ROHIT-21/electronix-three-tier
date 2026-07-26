@@ -1,85 +1,67 @@
 pipeline {
-    agent { label 'electronic' }
+    agent { 
+        label 'electronic' 
+    }
 
     environment {
-        ECR_REPO     = '306158389325.dkr.ecr.ap-south-1.amazonaws.com/electronix-ecr'
-        ECR_REGISTRY = '306158389325.dkr.ecr.ap-south-1.amazonaws.com'
-        AWS_REGION   = 'ap-south-1'
+        ECR_REPO      = '306158389325.dkr.ecr.ap-south-1.amazonaws.com/electronix-ecr'
+        AWS_REGION    = 'ap-south-1'
         PRODUCTION_IP = '3.109.51.79'
-        IMAGE_NAME   = 'electronix-backend'
     }
 
     stages {
+
         stage('Backend Pipeline') {
-            // when {
-            //     changeset "backend/**"
-            // }
+
+            when {
+                changeset "backend/**"
+            }
 
             stages {
+
                 stage('Build Docker Image') {
                     steps {
-                        dir('backend') {
+                        dir("backend") {
                             sh '''
-                                docker build \
-                                  -t ${IMAGE_NAME}:${BUILD_NUMBER} \
-                                  -t ${IMAGE_NAME}:latest \
-                                  .
+                            sudo docker build -t electronix-backend:${BUILD_NUMBER} .
                             '''
                         }
                     }
                 }
 
-                stage('ECR Login') {
+                stage("Test ECR Login") {
                     steps {
                         sh '''
-                            aws ecr get-login-password \
-                              --region ${AWS_REGION} |
-                            docker login \
-                              --username AWS \
-                              --password-stdin ${ECR_REGISTRY}
+                        aws ecr get-login-password --region ${AWS_REGION} | \
+                        sudo docker login --username AWS --password-stdin 306158389325.dkr.ecr.ap-south-1.amazonaws.com
                         '''
                     }
                 }
 
-                stage('Tag Docker Image') {
+                stage('Tag & Push ECR') {
                     steps {
                         sh '''
-                            docker tag \
-                              ${IMAGE_NAME}:${BUILD_NUMBER} \
-                              ${ECR_REPO}:${BUILD_NUMBER}
+                        sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
+                        sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:latest .
 
-                            docker tag \
-                              ${IMAGE_NAME}:latest \
-                              ${ECR_REPO}:latest
+                        sudo docker push ${ECR_REPO}:${BUILD_NUMBER}
+                        sudo docker push ${ECR_REPO}:latest .
                         '''
                     }
                 }
 
-                stage('Push Image to ECR') {
-                    steps {
-                        sh '''
-                            docker push ${ECR_REPO}:${BUILD_NUMBER}
-                            docker push ${ECR_REPO}:latest
-                        '''
-                    }
-                }
             }
         }
     }
 
     post {
+
         success {
-            echo 'Backend Docker image successfully pushed to ECR ✅'
+            echo "ECR login successfully ✅"
         }
 
         failure {
-            echo 'Backend pipeline failed ❌'
-        }
-
-        always {
-            sh '''
-                docker logout ${ECR_REGISTRY} || true
-            '''
+            echo "ECR login Failed ❌"
         }
     }
 }
