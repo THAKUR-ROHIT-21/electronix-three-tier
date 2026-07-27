@@ -1,22 +1,31 @@
 import session from 'express-session';
-import MongoStore from 'connect-mongo';
+import SequelizeStoreInit from 'connect-session-sequelize';
+import { getSequelize } from '../config/database.js'; 
 
-// Wrapped in a function so MongoStore.create() only runs when explicitly called from server.js —
-// AFTER dotenv has loaded the .env file. This avoids relying on import-order timing.
+const SequelizeStore = SequelizeStoreInit(session.Store);
+
 const createSessionConfig = () => {
+  const sequelize = getSequelize();
+
+  const sessionStore = new SequelizeStore({
+    db: sequelize,
+    tableName: 'sessions',
+    checkExpirationInterval: 15 * 60 * 1000, 
+    expiration: 7 * 24 * 60 * 60 * 1000,      
+  });
+
+  sessionStore.sync(); 
+
   return session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    store: MongoStore.create({
-      mongoUrl: process.env.MONGO_URI,
-      collectionName: 'sessions',
-      ttl: 7 * 24 * 60 * 60,
-    }),
+    store: sessionStore,
     cookie: {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax',
+      sameSite: 'none',
+      domain: '.biharibabu.online', 
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   });
