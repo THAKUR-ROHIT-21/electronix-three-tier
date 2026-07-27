@@ -1,39 +1,43 @@
 pipeline {
-    agent { 
-        label 'electronic' 
+    agent {
+        label 'electronic'
     }
 
     environment {
+        ECR_REGISTRY  = '306158389325.dkr.ecr.ap-south-1.amazonaws.com'
         ECR_REPO      = '306158389325.dkr.ecr.ap-south-1.amazonaws.com/electronix-ecr'
         AWS_REGION    = 'ap-south-1'
         PRODUCTION_IP = '3.109.51.79'
+        IMAGE_NAME    = 'electronix-backend'
     }
 
     stages {
 
         stage('Backend Pipeline') {
 
-            // when {
-            //     changeset "backend/**"
-            // }
+            // Uncomment if you want to deploy only when backend changes
+            /*
+            when {
+                changeset "backend/**"
+            }
+            */
 
             stages {
 
                 stage('Build Docker Image') {
                     steps {
-                        dir("backend") {
+                        dir('backend') {
                             sh '''
-                            sudo docker build -t electronix-backend:${BUILD_NUMBER} .
+                            sudo docker build -t ${IMAGE_NAME}:${BUILD_NUMBER} .
                             '''
                         }
                     }
                 }
 
-                stage("Test ECR Login") {
+                stage('ECR Login') {
                     steps {
                         sh '''
-                        aws ecr get-login-password --region ${AWS_REGION} | \
-                        sudo docker login --username AWS --password-stdin 306158389325.dkr.ecr.ap-south-1.amazonaws.com
+                        aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         '''
                     }
                 }
@@ -41,9 +45,8 @@ pipeline {
                 stage('Tag & Push ECR') {
                     steps {
                         sh '''
-                        sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
-                        sudo docker tag electronix-backend:${BUILD_NUMBER} ${ECR_REPO}:latest
-
+                        sudo docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${ECR_REPO}:${BUILD_NUMBER}
+                        sudo docker tag ${IMAGE_NAME}:${BUILD_NUMBER} ${ECR_REPO}:latest
                         sudo docker push ${ECR_REPO}:${BUILD_NUMBER}
                         sudo docker push ${ECR_REPO}:latest
                         '''
@@ -52,38 +55,37 @@ pipeline {
 
                 stage('Deploy To Production') {
                     steps {
-                        sshagent(['prod-server-ssh-key']){
-                        sh '''
-                        ssh -o StrictHostKeyChecking=no ubuntu@${PRODUCTION_IP} "
-                        aws ecr get-login-password --region ${AWS_REGION} | \
-                        sudo docker login --username AWS --password-stdin 306158389325.dkr.ecr.ap-south-1.amazonaws.com &&
-                        sudo docker pull ${ECR_REPO}: &&
-                        sudo docker stop electronix-backend || true &&
-                        sudo docker rm electronix-backend || true &&
-                        sudo docker run -d --name electronix-backend --env-file /home/ubuntu/.env -p 5000:5000 ${ECR_REPO}:latest
-                        "
-                        '''  
+                        sshagent(['prod-server-ssh-key']) {
+                            sh '''
+                            ssh -o StrictHostKeyChecking=no ubuntu@${PRODUCTION_IP} "aws ecr get-login-password --region ${AWS_REGION} | sudo docker login --username AWS --password-stdin ${ECR_REGISTRY} && sudo docker pull ${ECR_REPO}:latest && sudo docker rm -f electronix-backend || true && sudo docker run -d --name electronix-backend --restart unless-stopped --env-file /home/ubuntu/.env -p 5000:5000 ${ECR_REPO}:latest"
+                            '''
                         }
                     }
                 }
-                stage('Health Check'){
-                    steps{
-                        sh 'sleep 10 && curl -f http://${PRODUCTION_IP}:5000/api/health || exit 1'
+
+                stage('Health Check') {
+                    steps {
+                        sh '''
+                        sleep 10
+                        curl --fail http://${PRODUCTION_IP}:5000/api/health
+                        '''
                     }
                 }
-
             }
         }
     }
 
     post {
-
         success {
-            echo "ECR login successfully ✅"
+            echo 'Backend Deployment Completed Successfully ✅'
         }
 
         failure {
-            echo "ECR login Failed ❌"
+            echo 'Backend Deployment Failed ❌'
+        }
+
+        always {
+            echo 'Pipeline Execution Completed.'
         }
     }
 }
