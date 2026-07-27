@@ -57,12 +57,10 @@ pipeline {
                         ssh -o StrictHostKeyChecking=no ubuntu@${PRODUCTION_IP} "
                         aws ecr get-login-password --region ${AWS_REGION} | \
                         sudo docker login --username AWS --password-stdin 306158389325.dkr.ecr.ap-south-1.amazonaws.com &&
-                        sudo docker pull ${ECR_REPO}:lasets &&
+                        sudo docker pull ${ECR_REPO}: &&
                         sudo docker stop electronix-backend || true &&
                         sudo docker rm electronix-backend || true &&
                         sudo docker run -d --name electronix-backend --env-file /home/ubuntu/.env -p 5000:5000 ${ECR_REPO}:latest
-
-
                         "
                         '''  
                         }
